@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iron Man Style Object Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+        video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            z-index: 1; /* Video is beneath canvas */
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 2; /* Canvas is above video */
+        }
+    </style>
+</head>
+<body>
+    <video id="video" autoplay muted playsinline></video>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        async function main() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // Access the user's webcam with the rear camera
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { exact: 'environment' } // Use 'user' for front camera
+                    }
+                });
+                video.srcObject = stream;
+            } catch (error) {
+                console.error('Error accessing webcam:', error);
+                alert('Could not access the selected camera. Try using another camera or adjusting permissions.');
+                return;
+            }
+
+            // Wait for video to load
+            await new Promise(resolve => video.onloadedmetadata = resolve);
+
+            // Adjust canvas size to match video
+            const setCanvasSize = () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            };
+            setCanvasSize();
+            window.addEventListener('resize', setCanvasSize);
+
+            // Load the COCO-SSD model
+            const model = await cocoSsd.load();
+
+            async function detectObjects() {
+                // Detect objects in the video feed
+                const predictions = await model.detect(video);
+
+                // Clear the canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Scale canvas drawing to match video dimensions
+                const videoWidth = video.videoWidth;
+                const videoHeight = video.videoHeight;
+                const scaleX = canvas.width / videoWidth;
+                const scaleY = canvas.height / videoHeight;
+
+                predictions.forEach(prediction => {
+                    const [x, y, width, height] = prediction.bbox;
+
+                    // Scale bounding box to match canvas size
+                    const scaledX = x * scaleX;
+                    const scaledY = y * scaleY;
+                    const scaledWidth = width * scaleX;
+                    const scaledHeight = height * scaleY;
+
+                    // Circle parameters
+                    const centerX = scaledX + scaledWidth / 2;
+                    const centerY = scaledY + scaledHeight / 2;
+                    const radius = Math.max(scaledWidth, scaledHeight) / 2;
+
+                    // Draw main glowing circle
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+                    ctx.strokeStyle = 'rgba(100, 149, 237, 0.8)'; // Darker light blue color
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+
+                    // Draw concentric circles
+                    for (let i = 1; i <= 2; i++) {
+                        ctx.beginPath();
+                        ctx.arc(centerX, centerY, radius + i * 10, 0, 2 * Math.PI);
+                        ctx.strokeStyle = `rgba(100, 149, 237, ${0.5 - i * 0.15})`;
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+
+                    // Draw radial lines
+                    const numLines = 8;
+                    for (let i = 0; i < numLines; i++) {
+                        const angle = (i * Math.PI * 2) / numLines;
+                        const lineLength = 20;
+                        const startX = centerX + radius * Math.cos(angle);
+                        const startY = centerY + radius * Math.sin(angle);
+                        const endX = startX + lineLength * Math.cos(angle);
+                        const endY = startY + lineLength * Math.sin(angle);
+
+                        ctx.beginPath();
+                        ctx.moveTo(startX, startY);
+                        ctx.lineTo(endX, endY);
+                        ctx.strokeStyle = 'rgba(100, 149, 237, 0.8)'; // Darker light blue
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    }
+
+                    // Draw label with shadow
+                    ctx.fillStyle = 'white';
+                    ctx.shadowColor = 'rgba(100, 149, 237, 0.8)'; // Darker light blue shadow
+                    ctx.shadowBlur = 5;
+                    ctx.font = '16px Arial';
+                    ctx.fillText(prediction.class, scaledX, scaledY > 20 ? scaledY - 10 : scaledY + 20);
+                    ctx.shadowBlur = 0; // Reset shadow
+                });
+
+                // Keep detecting objects
+                requestAnimationFrame(detectObjects);
+            }
+
+            detectObjects();
+        }
+
+        main().catch(console.error);
+    </script>
+</body>
+</html>
